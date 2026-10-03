@@ -11,6 +11,10 @@ permissions:
 jobs:
   update:
     runs-on: ubuntu-latest
+    env:
+      TG_TOKEN: ${{ secrets.TG_TOKEN }}
+      TG_CHAT: ${{ secrets.TG_CHAT }}
+      SITE_URL: ${{ vars.SITE_URL }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -20,11 +24,7 @@ jobs:
       - name: 데이터 수집 + 계산
         run: python scripts/collect.py
       - name: 텔레그램 알림 (토큰 있을 때만)
-        if: ${{ secrets.TG_TOKEN != '' }}
-        env:
-          TG_TOKEN: ${{ secrets.TG_TOKEN }}
-          TG_CHAT: ${{ secrets.TG_CHAT }}
-          SITE_URL: ${{ vars.SITE_URL }}
+        if: ${{ env.TG_TOKEN != '' }}
         run: python scripts/notify.py
       - name: 결과 커밋
         run: |
