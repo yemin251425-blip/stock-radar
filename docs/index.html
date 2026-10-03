@@ -41,7 +41,7 @@ input[type=range]{width:100%;accent-color:var(--amb);height:22px}
 .card.open .det{display:block}
 .det .kv{display:flex;justify-content:space-between}.det .kv span:last-child{color:#fff}
 .det .t{color:var(--dim);font-size:11px;margin-top:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.btns{display:flex;gap:6px;margin-top:8px}.btns button{flex:1;padding:9px 0;font-weight:700}
+.btns{display:flex;gap:6px;margin-top:8px}.btns button,.btns .lnk{flex:1;padding:9px 0;font-weight:700;text-align:center;text-decoration:none;border:1px solid var(--line);border-radius:4px;font-size:12px}.lnk.amb{color:var(--amb);border-color:var(--amb2)}.lnk.pri{background:var(--amb);color:#000;border-color:var(--amb)}
 .tab{position:fixed;bottom:0;left:0;right:0;max-width:560px;margin:0 auto;display:flex;background:#000;border-top:1px solid var(--line);padding:8px 0 calc(10px + env(safe-area-inset-bottom))}
 .tab button{flex:1;border:0;font-size:12px;color:var(--dim);padding:8px 0}.tab button.on{color:var(--amb);font-weight:700}
 .tab button span{display:block;font-size:17px;margin-bottom:2px}
@@ -165,7 +165,7 @@ textarea{width:100%;height:260px;background:#0a0a0a;color:var(--txt);border:1px 
 <script>
 const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
 let DATA=[], BT=null, META={};
-const st={K:3,cap:3,floor:-5,win:"20",quiet:false,big:false,sort:"r",blogN:5};
+const st={K:3,cap:3,floor:-5,win:"20",quiet:false,big:false,sort:"r",blogN:5,limit:50};
 const fmtD=d=>{d=String(d);return d.slice(4,6)+"/"+d.slice(6,8)};
 const fmtN=n=>n.toLocaleString("ko-KR");
 const pct=v=>(v>0?"+":"")+v.toFixed(1)+"%";
@@ -193,6 +193,7 @@ function passList(){
   }).map(x=>({...x,cur:x.w[st.win]}));
 }
 function render(){
+  if(render.key!==JSON.stringify([st.K,st.cap,st.floor,st.win,st.quiet,st.big,st.sort])){render.key=JSON.stringify([st.K,st.cap,st.floor,st.win,st.quiet,st.big,st.sort]);st.limit=50;}
   $("#vK").textContent=st.K+"배 이상"; $("#vCap").textContent="+"+st.cap+"% 이하"; $("#vFloor").textContent=st.floor+"% 까지";
   $("#vWin").textContent={10:"최근 2주",20:"최근 1개월",40:"최근 2개월"}[st.win];
   let L=passList();
@@ -201,7 +202,7 @@ function render(){
   $("#nPass").textContent=L.length; $("#nQuiet").textContent=L.filter(x=>x.disc==0&&x.news==0).length;
   if(!L.length){$("#list").innerHTML='<div class="empty">조건에 맞는 종목이 없어.<br>슬라이더를 조금 풀어봐 (배수 내리기 / 범위 넓히기).</div>';return;}
   const showT=$("#cToss").checked, showN=$("#cNaver").checked;
-  $("#list").innerHTML=L.slice(0,150).map(x=>{
+  $("#list").innerHTML=L.slice(0,st.limit).map(x=>{
     const c=x.cur, quiet=x.disc==0&&x.news==0;
     const mx=Math.max(...x.sparkv,1);
     const bars=x.sparkv.map((v,i)=>`<i style="height:${Math.max(2,Math.round(v/mx*22))}px" class="${v==c.sv?'s':''}"></i>`).join("");
@@ -218,9 +219,10 @@ function render(){
         <div class="kv"><span>폭발일 → 지금</span><span class="${cls(c.sc)}">${pct(c.sc)}</span></div>
         <div class="kv"><span>하루 평균 거래대금</span><span>${x.tv}억</span></div>
         ${titles||'<div class="t">폭발일 전후 뉴스·공시 없음</div>'}
-        <div class="btns">${showN?`<button class="amb" onclick="event.stopPropagation();open('https://m.stock.naver.com/domestic/stock/${x.code}/total')">네이버 증권</button>`:""}${showT?`<button class="pri" onclick="event.stopPropagation();open('https://tossinvest.com/stocks/A${x.code}')">토스증권</button>`:""}</div>
+        <div class="btns">${showN?`<a class="lnk amb" href="https://m.stock.naver.com/domestic/stock/${x.code}/total" target="_blank" rel="noopener" onclick="event.stopPropagation()">네이버 증권</a>`:""}${showT?`<a class="lnk pri" href="https://tossinvest.com/stocks/A${x.code}" target="_blank" rel="noopener" onclick="event.stopPropagation()">토스증권</a>`:""}</div>
       </div></div>`;
-  }).join("")+(L.length>150?`<div class="empty">상위 150개만 표시 (전체 ${L.length})</div>`:"");
+  }).join("")+(L.length>st.limit?`<div class="empty"><button class="amb" id="btnMore">더 보기 (${st.limit}/${L.length})</button></div>`:"");
+  const mb=$("#btnMore"); if(mb) mb.onclick=e=>{e.stopPropagation();st.limit+=50;render()};
 }
 
 function renderBT(){
