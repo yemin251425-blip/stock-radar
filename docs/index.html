@@ -86,7 +86,11 @@ textarea{width:100%;height:260px;background:#0a0a0a;color:var(--txt);border:1px 
 
     <label class="chk"><input type="checkbox" id="cQuiet"> 뉴스·공시 없는 것만 보기 <span class="i" data-tip="t5">?</span></label>
     <div class="tip" id="t5">거래 폭발한 날 전후로 뉴스도 공시도 없으면 '이유 없는 거래량'. 호재 때문에 몰린 게 아니라서 더 수상한 거야.</div>
-    <label class="chk"><input type="checkbox" id="cBig"> 시총 1,000억 이상만</label>
+    <label class="chk"><input type="checkbox" id="cPersist"> 다음날도 거래 이어진 것만 <span class="i" data-tip="t6">?</span></label>
+    <div class="tip" id="t6">폭발 다음날도 평소의 1.5배 이상 거래됐는지. 하루 반짝(뉴스 한 방)이 아니라 며칠 이어지면 누군가 계속 사고 있을 가능성이 커.</div>
+    <div class="row" style="margin-top:10px"><span>⑤ 회사 크기(시총)<span class="i" data-tip="t7">?</span></span><b id="vB">전체</b></div>
+    <div class="tip" id="t7">작은 회사일수록 세력이 움직이기 쉽지만 그만큼 위험도 커. 백테스트 탭에서 크기별로 결과가 달라지는지 꼭 봐.</div>
+    <div class="seg"><button data-b="all" class="on">전체</button><button data-b="s">300억↓</button><button data-b="m">300~1000억</button><button data-b="l">1000억↑</button></div>
   </div>
 
   <div class="sum"><span>조건 통과 <b id="nPass">0</b>종목</span><span>뉴스 없음 <b id="nQuiet">0</b></span><span>전체 <span id="nAll">0</span></span></div>
@@ -100,6 +104,10 @@ textarea{width:100%;height:260px;background:#0a0a0a;color:var(--txt);border:1px 
   <div class="box"><h3>이 조건, 과거엔 통했나? (백테스트)</h3>
     <p>지금 슬라이더 조건으로 지난 약 6개월 동안 매일 종목을 골랐다고 치고, 고른 다음 <b style="color:#fff">5일 뒤</b>·<b style="color:#fff">20일 뒤</b> 주가가 어떻게 됐는지 계산한 결과야.</p>
     <p style="color:var(--dim)">현재 조건: <span id="btCond">-</span> (백테스트는 기간 1개월 고정)</p>
+  </div>
+  <div class="box"><h3>시장을 이긴 조건 순위 (지난 6개월)</h3>
+    <p style="color:var(--dim);font-size:11px">"처음 신호 뜬 날 사서 20일 들고 있었을 때" 평균이 같은 크기 종목 시장 평균보다 얼마나 좋았나(%p). 신호 30개 이상만. 맨 아래 5개는 제일 나빴던 조건.</p>
+    <table><thead><tr><th>조건</th><th>신호</th><th>20일 평균</th><th>시장 대비</th></tr></thead><tbody id="btBoard"></tbody></table>
   </div>
   <div class="box"><h3>처음 신호 뜬 날 샀다면</h3>
     <div class="grid2">
@@ -132,7 +140,8 @@ textarea{width:100%;height:260px;background:#0a0a0a;color:var(--txt);border:1px 
   <div class="box help"><h3>이 앱 쓰는 법 (3줄 요약)</h3>
     <p>1. <b style="color:#fff">스크리너</b> 탭에서 슬라이더로 조건을 정해. 처음엔 그냥 기본값(3배 / +3% / -5%)으로 봐.</p>
     <p>2. 종목을 누르면 자세한 숫자랑 뉴스가 펼쳐지고, <b style="color:#fff">네이버 증권 / 토스증권</b> 버튼으로 바로 가.</p>
-    <p>3. <b style="color:#fff">백테스트</b> 탭에서 "이 조건이 과거에 통했는지" 꼭 확인하고 판단해.</p>
+    <p>3. <b style="color:#fff">백테스트</b> 탭에서 "이 조건이 과거에 통했는지" 꼭 확인하고 판단해. "시장을 이긴 조건 순위"를 보면 어떤 조합이 됐는지 한눈에 보여.</p>
+    <p>4. 텔레그램 <b style="color:#fff">@sogeum_radar_bot</b>에서 <b style="color:#fff">/구독</b> 하면 매일 저녁 6시 TOP10이 와. <b style="color:#fff">/감시 삼성전자</b> 하면 그 종목에 거래 폭발·공시 뜰 때 알려줘.</p>
   </div>
   <div class="box help"><h3>용어 쉽게</h3>
     <h4>거래량</h4><p>하루에 주식이 몇 주 거래됐는지. 많으면 사람(또는 큰손)이 많이 움직인 거.</p>
@@ -165,7 +174,9 @@ textarea{width:100%;height:260px;background:#0a0a0a;color:var(--txt);border:1px 
 <script>
 const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
 let DATA=[], BT=null, META={};
-const st={K:3,cap:3,floor:-5,win:"20",quiet:false,big:false,sort:"r",blogN:5,limit:50};
+const st={K:3,cap:3,floor:-5,win:"20",quiet:false,b:"all",persist:false,sort:"r",blogN:5,limit:50};
+const BN={all:"전체",s:"300억↓",m:"300~1000억",l:"1000억↑"};
+const bucketOf=cap=>cap<300?"s":cap<1000?"m":"l";
 const fmtD=d=>{d=String(d);return d.slice(4,6)+"/"+d.slice(6,8)};
 const fmtN=n=>n.toLocaleString("ko-KR");
 const pct=v=>(v>0?"+":"")+v.toFixed(1)+"%";
@@ -188,14 +199,15 @@ function passList(){
     const w=x.w[st.win]; if(!w) return false;
     if(w.r<st.K||w.chg>st.cap||w.chg<st.floor) return false;
     if(st.quiet&&(x.disc>0||x.news>0)) return false;
-    if(st.big&&x.cap<1000) return false;
+    if(st.b!=="all"&&bucketOf(x.cap)!==st.b) return false;
+    if(st.persist&&!(w.r2>=1.5)) return false;
     return true;
   }).map(x=>({...x,cur:x.w[st.win]}));
 }
 function render(){
-  if(render.key!==JSON.stringify([st.K,st.cap,st.floor,st.win,st.quiet,st.big,st.sort])){render.key=JSON.stringify([st.K,st.cap,st.floor,st.win,st.quiet,st.big,st.sort]);st.limit=50;}
+  if(render.key!==JSON.stringify([st.K,st.cap,st.floor,st.win,st.quiet,st.b,st.persist,st.sort])){render.key=JSON.stringify([st.K,st.cap,st.floor,st.win,st.quiet,st.b,st.persist,st.sort]);st.limit=50;}
   $("#vK").textContent=st.K+"배 이상"; $("#vCap").textContent="+"+st.cap+"% 이하"; $("#vFloor").textContent=st.floor+"% 까지";
-  $("#vWin").textContent={10:"최근 2주",20:"최근 1개월",40:"최근 2개월"}[st.win];
+  $("#vWin").textContent={10:"최근 2주",20:"최근 1개월",40:"최근 2개월"}[st.win]; $("#vB").textContent=BN[st.b];
   let L=passList();
   const sorters={r:(a,b)=>b.cur.r-a.cur.r,cap:(a,b)=>b.cap-a.cap,sd:(a,b)=>b.cur.sd-a.cur.sd,tv:(a,b)=>b.tv-a.tv};
   L.sort(sorters[st.sort]);
@@ -206,7 +218,7 @@ function render(){
     const c=x.cur, quiet=x.disc==0&&x.news==0;
     const mx=Math.max(...x.sparkv,1);
     const bars=x.sparkv.map((v,i)=>`<i style="height:${Math.max(2,Math.round(v/mx*22))}px" class="${v==c.sv?'s':''}"></i>`).join("");
-    const badge=quiet?'<span class="q">뉴스도 없는데 거래 폭발</span>':`<span class="q n">뉴스 ${x.news}건 · 공시 ${x.disc}건</span>`;
+    const badge=(quiet?'<span class="q">뉴스도 없는데 거래 폭발</span>':`<span class="q n">뉴스 ${x.news}건 · 공시 ${x.disc}건</span>`)+(c.r2>=1.5?' <span class="q">다음날도 🔥</span>':'');
     const titles=(x.titles||[]).map(t=>`<div class="t">${t}</div>`).join("");
     return `<div class="card" data-code="${x.code}">
       <div class="top"><div style="flex:1;min-width:0"><div class="nm">${x.name}<small>${x.mk} · 시총 ${x.cap>=10000?(x.cap/10000).toFixed(1)+"조":fmtN(x.cap)+"억"}</small></div>
@@ -215,6 +227,7 @@ function render(){
       <div class="det">
         <div class="kv"><span>현재가</span><span>${fmtN(x.close)}원 (${pct(x.d1)})</span></div>
         <div class="kv"><span>폭발일 거래량</span><span>${fmtN(c.sv)}주 (평소 ${fmtN(c.av)}주)</span></div>
+        <div class="kv"><span>다음날 거래</span><span>${c.r2<0?"아직 모름(폭발일이 마지막 날)":c.r2>=1.5?"평소의 "+c.r2.toFixed(1)+"배, 이어짐 🔥":"평소의 "+c.r2.toFixed(1)+"배, 조용해짐"}</span></div>
         <div class="kv"><span>기간 시작 → 지금</span><span class="${cls(c.chg)}">${pct(c.chg)}</span></div>
         <div class="kv"><span>폭발일 → 지금</span><span class="${cls(c.sc)}">${pct(c.sc)}</span></div>
         <div class="kv"><span>하루 평균 거래대금</span><span>${x.tv}억</span></div>
@@ -229,20 +242,26 @@ function renderBT(){
   if(!BT) return;
   const K=[2,3,4,5].reduce((a,b)=>Math.abs(b-st.K)<Math.abs(a-st.K)?b:a);
   const cap=[3,5,10].reduce((a,b)=>Math.abs(b-st.cap)<Math.abs(a-st.cap)?b:a);
-  const fl=st.floor<=-10?-100:-5;
-  const g=BT.grid[`${K}_${cap}_${fl}`]||{n:0};
-  $("#btCond").textContent=`${K}배 이상 / +${cap}% 이하 / ${fl==-100?"하락 제한 없음":"-5%까지"}`;
-  if(!g.n){$("#bN").textContent="0";return;}
-  $("#bN").textContent=fmtN(g.first); $("#bW20").textContent=g.fwin20+"%";
-  $("#bA5").textContent=pct(g.favg5); $("#bA5").className="v "+cls(g.favg5);
-  $("#bA20").textContent=pct(g.favg20); $("#bA20").className="v "+cls(g.favg20);
-  $("#bW20").className="v "+(g.fwin20>=50?"up":"dn");
-  $("#bMkt").textContent=`${pct(BT.market.avg20)} (오른 비율 ${BT.market.win20}%)`;
-  $("#bBig").textContent=g.big20+"%"; $("#bBad").textContent=g.bad20+"%";
-  const diff=g.favg20-BT.market.avg20;
-  $("#bVerdict").textContent=diff>1?`→ 이 기간엔 시장 평균보다 ${diff.toFixed(1)}%p 더 좋았어. 다만 기간이 짧아서 운일 수도 있어.`:
-    diff<-1?`→ 이 기간엔 시장 평균보다 ${Math.abs(diff).toFixed(1)}%p 더 나빴어. "거래 폭발 + 안 오름"이 항상 매집은 아니라는 뜻.`:
-    `→ 시장 평균이랑 거의 차이 없었어. 이 조건만으로는 우위가 안 보여.`;
+  const fl=st.floor<=-10?-100:-5, p=st.persist?1:0, b=st.b;
+  const g=BT.grid[`${K}_${cap}_${fl}_${b}_${p}`]||{n:0};
+  const mk=BT.market[b]||BT.market.all;
+  $("#btCond").textContent=`${K}배 이상 / +${cap}% 이하 / ${fl==-100?"하락 제한 없음":"-5%까지"} / ${BN[b]}${p?" / 다음날 이어짐":""}`;
+  $("#bMkt").textContent=`${pct(mk.avg20)} (오른 비율 ${mk.win20}%)`;
+  if(!g.n){$("#bN").textContent="0";$("#bW20").textContent="-";$("#bA5").textContent="-";$("#bA20").textContent="-";$("#bVerdict").textContent="이 조건은 지난 6개월에 신호가 거의 없었어.";}
+  else{
+    $("#bN").textContent=fmtN(g.first); $("#bW20").textContent=g.fwin20+"%";
+    $("#bA5").textContent=pct(g.favg5); $("#bA5").className="v "+cls(g.favg5);
+    $("#bA20").textContent=pct(g.favg20); $("#bA20").className="v "+cls(g.favg20);
+    $("#bW20").className="v "+(g.fwin20>=50?"up":"dn");
+    $("#bBig").textContent=g.big20+"%"; $("#bBad").textContent=g.bad20+"%";
+    const diff=g.favg20-mk.avg20;
+    $("#bVerdict").textContent=diff>1?`→ 같은 크기 종목 시장 평균보다 ${diff.toFixed(1)}%p 더 좋았어. ${g.first<100?"다만 신호가 적어서 운일 수도 있어.":""}`:
+      diff<-1?`→ 시장 평균보다 ${Math.abs(diff).toFixed(1)}%p 더 나빴어. "거래 폭발 + 안 오름"이 항상 매집은 아니라는 뜻.`:
+      `→ 시장 평균이랑 거의 차이 없었어. 이 조건만으로는 우위가 안 보여.`;
+  }
+  const lab=x=>`${x.K}배↑ · ${x.cap==="up"?"이미 +3% 넘게 오름":"+"+x.cap+"%↓"+(x.fl==="-5"?" / -5%↑":"")} · ${BN[x.b]}${x.p==="1"?" · 다음날🔥":""}`;
+  $("#btBoard").innerHTML=(BT.board||[]).map(x=>x.sep?`<tr><td colspan="4" style="text-align:center;color:var(--dim)">··· 제일 나빴던 조건 ···</td></tr>`:
+    `<tr><td style="white-space:normal">${lab(x)}</td><td>${x.n}</td><td class="${cls(x.avg20)}">${pct(x.avg20)}</td><td class="${cls(x.diff)}">${x.diff>0?"+":""}${x.diff.toFixed(1)}%p</td></tr>`).join("");
   $("#btRecent").innerHTML=(BT.recent||[]).slice(0,30).map(x=>`<tr><td>${x.name}</td><td>${fmtD(x.date)}</td><td>${x.r}배</td><td class="${cls(x.r5)}">${pct(x.r5)}</td><td class="${cls(x.r20)}">${pct(x.r20)}</td></tr>`).join("");
 }
 
@@ -253,7 +272,7 @@ function makeBlog(){
   s+=`오늘도 코스피·코스닥 전 종목을 돌려서 "평소보다 거래량이 ${st.K}배 이상 터졌는데, 주가는 최근 ${ {10:"2주",20:"1개월",40:"2개월"}[st.win]} 동안 +${st.cap}%도 안 오른" 종목만 골라봤습니다. 누군가 물량을 조용히 받아내고 있을 수도 있고, 반대로 털고 나가는 중일 수도 있으니 참고용으로만 봐주세요.\n\n`;
   L.forEach((x,i)=>{const c=x.cur,q=x.disc==0&&x.news==0;
     s+=`${i+1}. ${x.name} (${x.mk})\n- 거래 폭발일: ${fmtD(c.sd)} / 평소 대비 ${c.r.toFixed(1)}배\n- 기간 주가 변화: ${pct(c.chg)} / 현재가 ${fmtN(x.close)}원\n- 시총 ${x.cap>=10000?(x.cap/10000).toFixed(1)+"조":fmtN(x.cap)+"억"}\n- ${q?"폭발일 전후 뉴스·공시 없음 (이유 없는 거래량)":`폭발일 전후 뉴스 ${x.news}건·공시 ${x.disc}건${x.titles&&x.titles[0]?" — "+x.titles[0]:""}`}\n\n`;});
-  s+=`※ 본 글은 네이버 증권 공개 데이터를 조건대로 걸러낸 결과일 뿐 종목 추천이 아닙니다. 투자 판단과 책임은 본인에게 있습니다.\n#거래량 #거래량급증 #주식스크리너 #코스닥 #코스피`;
+  s+=`📲 매일 저녁 6시 거래량 폭발 종목 알림 받기 → t.me/sogeum_radar_bot\n🔎 직접 조건 바꿔보기 → stock-radar-kr.netlify.app\n\n※ 본 글은 네이버 증권 공개 데이터를 조건대로 걸러낸 결과일 뿐 종목 추천이 아닙니다. 투자 판단과 책임은 본인에게 있습니다.\n#거래량 #거래량급증 #주식스크리너 #코스닥 #코스피`;
   $("#blogText").value=s;
 }
 
@@ -265,7 +284,8 @@ $$(".seg [data-w]").forEach(b=>b.onclick=()=>{$$(".seg [data-w]").forEach(x=>x.c
 $$(".seg [data-n]").forEach(b=>b.onclick=()=>{$$(".seg [data-n]").forEach(x=>x.classList.remove("on"));b.classList.add("on");st.blogN=+b.dataset.n});
 $$(".sort button").forEach(b=>b.onclick=()=>{$$(".sort button").forEach(x=>x.classList.remove("on"));b.classList.add("on");st.sort=b.dataset.s;render()});
 $("#cQuiet").onchange=e=>{st.quiet=e.target.checked;render()};
-$("#cBig").onchange=e=>{st.big=e.target.checked;render()};
+$("#cPersist").onchange=e=>{st.persist=e.target.checked;render();renderBT()};
+$$(".seg [data-b]").forEach(b=>b.onclick=()=>{$$(".seg [data-b]").forEach(x=>x.classList.remove("on"));b.classList.add("on");st.b=b.dataset.b;render();renderBT()});
 $("#cToss").onchange=render; $("#cNaver").onchange=render;
 $$(".i").forEach(i=>i.onclick=e=>{e.preventDefault();e.stopPropagation();$("#"+i.dataset.tip).classList.toggle("on")});
 $("#list").onclick=e=>{const c=e.target.closest(".card");if(c)c.classList.toggle("open")};
