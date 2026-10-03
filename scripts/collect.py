@@ -22,8 +22,13 @@ DAYS = 160          # 수집 거래일 수 (백테스트용)
 WINDOWS = [10, 20, 40]   # 스크리너 기간(거래일)
 BASE = 20           # 평균 거래량 기준 기간
 K_GRID = [2, 3, 4, 5]
-CAP_GRID = [3, 5, 10]
+CAP_GRID = [3, 5, 10, "up"]      # "up" = 이미 3% 넘게 오른 것 (반대 조건 검증용)
 FLOOR_GRID = [-5, -100]
+BUCKETS = ["all", "s", "m", "l"]  # 전체 / 300억 미만 / 300~1000억 / 1000억 이상
+PERSIST = [0, 1]                  # 1 = 다음날 거래량도 1.5배 이상
+def bucket_of(cap_won):
+    b = cap_won / 1e8
+    return "s" if b < 300 else ("m" if b < 1000 else "l")
 MIN_CAP = 100e8     # 시총 100억 미만 제외
 MIN_TV = 1e8        # 20일 평균 거래대금 1억 미만 제외
 
@@ -83,7 +88,10 @@ def screen_at(c, v, end, win):
     i = int(ratios.argmax())
     spike = s + i
     chg = (c[end] / c[s - 1] - 1) * 100 if c[s - 1] > 0 else 0
-    return float(ratios[i]), spike, float(chg)
+    # 다음날 거래량도 이어졌나 (평소 대비 배수). 폭발일이 마지막 날이면 아직 모름(-1)
+    base = v[spike - BASE:spike].mean()
+    r2 = float(v[spike + 1] / base) if spike + 1 <= end and base > 0 else -1.0
+    return float(ratios[i]), spike, float(chg), r2
 
 def clean(c, v):
     """액면병합/분할(하루 ±35% 초과), 거래량 너무 적은 종목 제외"""
@@ -156,8 +164,8 @@ def main():
         for win in WINDOWS:
             r = screen_at(c, v, end, win)
             if not r: continue
-            ratio, spike, chg = r
-            row["w"][str(win)] = {"r": round(ratio, 2), "sd": int(d[spike]), "chg": round(chg, 2),
+            ratio, spike, chg, r2 = r
+            row["w"][str(win)] = {"r": round(ratio, 2), "sd": int(d[spike]), "chg": round(chg, 2), "r2": round(r2, 2),
                                   "sc": round((c[end] / c[spike] - 1) * 100, 2), "sv": int(v[spike]),
                                   "av": int(v[spike - BASE:spike].mean())}
             best = max(best, ratio)
@@ -183,62 +191,84 @@ def main():
     win = 20
     H = {}
     recent = []
+    def key(K, cap, fl, b, p): return f"{K}_{cap}_{fl}_{b}_{p}"
     for K in K_GRID:
         for cap in CAP_GRID:
             for fl in FLOOR_GRID:
-                H[f"{K}_{cap}_{fl}"] = {"n": 0, "r5": [], "r20": [], "first": 0, "f5": [], "f20": []}
+                for b in BUCKETS:
+                    for p in PERSIST:
+                        H[key(K, cap, fl, b, p)] = {"n": 0, "first": 0, "f5": [], "f20": []}
+    mkt = {b: [] for b in BUCKETS}
     for code, a in data.items():
         d, c, v = a[:, 0].astype(int), a[:, 4], a[:, 5]
         n = len(c)
         if meta[code]["cap"] < MIN_CAP or not clean(c, v): continue
-        # 평가일: 20일 뒤 결과가 있는 날까지
-        prev_pass = {k: False for k in H}
+        bk = bucket_of(meta[code]["cap"])
+        prev_pass = {}
         for end in range(BASE + win, n - 20):
+            r20 = (c[end + 20] / c[end] - 1) * 100
+            if end % 5 == 0:
+                mkt["all"].append(r20); mkt[bk].append(r20)
             r = screen_at(c, v, end, win)
             if not r: continue
-            ratio, spike, chg = r
+            ratio, spike, chg, r2 = r
             if ratio < 2:
-                for k in prev_pass: prev_pass[k] = False
+                prev_pass = {}
                 continue
             r5 = (c[end + 5] / c[end] - 1) * 100
-            r20 = (c[end + 20] / c[end] - 1) * 100
+            persist_ok = r2 >= 1.5
             for K in K_GRID:
-              for cap in CAP_GRID:
-                for fl in FLOOR_GRID:
-                    k = f"{K}_{cap}_{fl}"
-                    ok = ratio >= K and fl <= chg <= cap
-                    if ok:
-                        H[k]["n"] += 1; H[k]["r5"].append(r5); H[k]["r20"].append(r20)
-                        if not prev_pass[k]:
-                            H[k]["first"] += 1; H[k]["f5"].append(r5); H[k]["f20"].append(r20)
-                            if K == 3 and cap == 3 and fl == -5:
-                                recent.append({"code": code, "name": meta[code]["name"], "date": int(d[end]),
-                                               "r": round(ratio, 1), "chg": round(chg, 1),
-                                               "r5": round(r5, 1), "r20": round(r20, 1)})
-                    prev_pass[k] = ok
-    bt = {"window": win, "grid": {}, "recent": sorted(recent, key=lambda x: -x["date"])[:60]}
+                if ratio < K: continue
+                for cap in CAP_GRID:
+                    for fl in FLOOR_GRID:
+                        if cap == "up":
+                            ok_c = chg > 3
+                        else:
+                            ok_c = fl <= chg <= cap
+                        if not ok_c: continue
+                        for p in PERSIST:
+                            if p == 1 and not persist_ok: continue
+                            for b in ("all", bk):
+                                k = key(K, cap, fl, b, p)
+                                H[k]["n"] += 1
+                                if not prev_pass.get(k):
+                                    H[k]["first"] += 1; H[k]["f5"].append(r5); H[k]["f20"].append(r20)
+                                    if K == 3 and cap == 3 and fl == -5 and b == "all" and p == 0:
+                                        recent.append({"code": code, "name": meta[code]["name"], "date": int(d[end]),
+                                                       "r": round(ratio, 1), "chg": round(chg, 1),
+                                                       "r5": round(r5, 1), "r20": round(r20, 1)})
+                                prev_pass[k] = True
+            # 이번 평가일에 통과 못한 키는 리셋
+            for k in list(prev_pass):
+                K, cap, fl, b, p = k.split("_")
+                K = float(K); fl = int(fl); p = int(p)
+                ok = ratio >= K and ((chg > 3) if cap == "up" else (fl <= chg <= int(cap))) and (p == 0 or persist_ok)
+                if not ok: prev_pass.pop(k)
+    bt = {"window": win, "grid": {}, "market": {}, "recent": sorted(recent, key=lambda x: -x["date"])[:60]}
+    for b in BUCKETS:
+        arr = np.array(mkt[b]) if mkt[b] else np.array([0.0])
+        bt["market"][b] = {"avg20": round(float(arr.mean()), 2), "win20": round(float((arr > 0).mean() * 100), 1), "n": len(mkt[b])}
+    board = []
     for k, h in H.items():
-        if h["n"] == 0:
+        if h["first"] == 0:
             bt["grid"][k] = {"n": 0}; continue
-        r5, r20 = np.array(h["r5"]), np.array(h["r20"])
         f5, f20 = np.array(h["f5"]), np.array(h["f20"])
-        bt["grid"][k] = {"n": h["n"], "first": h["first"],
-                         "favg5": round(float(f5.mean()), 2), "favg20": round(float(f20.mean()), 2),
-                         "fwin5": round(float((f5 > 0).mean() * 100), 1), "fwin20": round(float((f20 > 0).mean() * 100), 1),
-                         "avg5": round(float(r5.mean()), 2), "avg20": round(float(r20.mean()), 2),
-                         "med5": round(float(np.median(r5)), 2), "med20": round(float(np.median(r20)), 2),
-                         "win5": round(float((r5 > 0).mean() * 100), 1), "win20": round(float((r20 > 0).mean() * 100), 1),
-                         "big20": round(float((r20 >= 10).mean() * 100), 1), "bad20": round(float((r20 <= -10).mean() * 100), 1)}
-    # 시장 평균(비교용): 아무 조건 없는 전 종목 20일 수익률
-    allr = []
-    for code, a in data.items():
-        c, v = a[:, 4], a[:, 5]
-        if meta[code]["cap"] < MIN_CAP or not clean(c, v): continue
-        for end in range(BASE + win, len(c) - 20, 5):
-            allr.append((c[end + 20] / c[end] - 1) * 100)
-    allr = np.array(allr)
-    bt["market"] = {"avg20": round(float(allr.mean()), 2), "win20": round(float((allr > 0).mean() * 100), 1), "n": len(allr)}
+        g = {"n": h["n"], "first": h["first"],
+             "favg5": round(float(f5.mean()), 2), "favg20": round(float(f20.mean()), 2),
+             "fmed20": round(float(np.median(f20)), 2),
+             "fwin5": round(float((f5 > 0).mean() * 100), 1), "fwin20": round(float((f20 > 0).mean() * 100), 1),
+             "big20": round(float((f20 >= 10).mean() * 100), 1), "bad20": round(float((f20 <= -10).mean() * 100), 1)}
+        bt["grid"][k] = g
+        K, cap, fl, b, p = k.split("_")
+        if h["first"] >= 30 and not (cap == "up" and fl == "-5"):   # 'up'은 하락제한 무의미 → 중복 제거
+            board.append({"k": k, "K": K, "cap": cap, "fl": fl, "b": b, "p": p, "n": h["first"],
+                          "avg20": g["favg20"], "win20": g["fwin20"],
+                          "diff": round(g["favg20"] - bt["market"][b]["avg20"], 2)})
+    board.sort(key=lambda x: -x["diff"])
+    bt["board"] = board[:15] + [{"sep": True}] + board[-5:]
 
+    json.dump([{"code": x["code"], "name": x["name"], "mk": x["mk"]} for x in stocks],
+              open(os.path.join(OUT, "stocks.json"), "w"), ensure_ascii=False, separators=(",", ":"))
     json.dump(results, open(os.path.join(OUT, "result.json"), "w"), ensure_ascii=False, separators=(",", ":"))
     json.dump(bt, open(os.path.join(OUT, "backtest.json"), "w"), ensure_ascii=False, separators=(",", ":"))
     json.dump({"updated": dt.datetime.now(dt.timezone(dt.timedelta(hours=9))).strftime("%Y-%m-%d %H:%M"),
