@@ -14,7 +14,6 @@ jobs:
     env:
       TG_TOKEN: ${{ secrets.TG_TOKEN }}
       TG_CHAT: ${{ secrets.TG_CHAT }}
-      SITE_URL: ${{ vars.SITE_URL }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -23,9 +22,8 @@ jobs:
       - run: pip install requests numpy
       - name: 데이터 수집 + 계산
         run: python scripts/collect.py
-      - name: 텔레그램 알림 (토큰 있을 때만)
-        if: ${{ env.TG_TOKEN != '' }}
-        run: python scripts/notify.py
+      - name: 블로그 글 생성
+        run: python scripts/blog.py
       - name: 결과 커밋
         run: |
           git config user.name "radar-bot"
@@ -33,3 +31,9 @@ jobs:
           git add docs/data
           git commit -m "data: $(date -u +'%Y-%m-%d')" || echo "변경 없음"
           git push
+      - name: 봇 연결 (웹훅)
+        if: ${{ env.TG_TOKEN != '' }}
+        run: python scripts/bot_setup.py
+      - name: 텔레그램 (소유자) TOP10 + 블로그 글
+        if: ${{ env.TG_TOKEN != '' }}
+        run: python scripts/notify.py
