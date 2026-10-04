@@ -17,20 +17,27 @@ def send(text):
                       json={"chat_id": CHAT, "text": text, "disable_web_page_preview": True}, timeout=20)
     print(r.status_code, r.text[:120]); return r.ok
 
+RD = json.load(open(os.path.join(D, "radar.json"), encoding="utf-8"))
+w, r = RD["weather"], RD["rule"]
+d = str(RD["date"]); d = f"{d[:4]}-{d[4:6]}-{d[6:]}"
+sigs = " / ".join(f"{r['signals'][k]['icon']}{r['signals'][k]['name']}" for k in r["byWeather"][w["key"]])
+msg = f"🌤 거래량 레이더 {d}\n오늘 시장 날씨: {w['icon']} {w['name']} ({w['pct']}%가 평균보다 비쌈)\n규칙: {sigs} → 내일 마감가 매수 → {r['hold']}일 보유 → 15%↑ 즉시 매도\n\n"
+if RD["picks"]:
+    msg += f"🛍 사볼까? ({RD['candidates']}개 중 {len(RD['picks'])}개)\n"
+    for i, x in enumerate(RD["picks"], 1):
+        q = "🔕" if not (x.get("news") or x.get("disc")) else "📰"
+        msg += f"{i}. {q} {x['name']} {x['close']:,}원 ({x['d1']:+.1f}%) {x['icon']} → 목표 {x['target']:,}\n"
+    if RD["bench"]: msg += "예비: " + ", ".join(x["name"] for x in RD["bench"][:5]) + "\n"
+else:
+    msg += "🛍 오늘은 규칙에 맞는 종목 없음 → 쉬는 날\n"
+# 예전 방식(거래량 급증) 상위 5개도 참고로
 K, CAP, FLOOR, WIN = 3, 3, -5, "20"
 L = [dict(x, cur=x["w"][WIN]) for x in R if x["w"].get(WIN)]
 L = [x for x in L if x["cur"]["r"] >= K and FLOOR <= x["cur"]["chg"] <= CAP]
 L.sort(key=lambda x: -x["cur"]["r"])
-quiet = [x for x in L if x["disc"] == 0 and x["news"] == 0]
-
-d = str(M["lastDate"]); d = f"{d[:4]}-{d[4:6]}-{d[6:]}"
-msg = f"📊 거래량 레이더 {d}\n조건: 거래 {K}배↑ / 주가 +{CAP}%↓ / 1개월\n통과 {len(L)}종목 · 뉴스없음 {len(quiet)}\n\n"
-for i, x in enumerate(L[:10], 1):
-    c = x["cur"]; q = "🔕" if x["disc"] == 0 and x["news"] == 0 else "📰"
-    f = "🔥" if c["r2"] >= 1.5 else ""
-    sd = str(c["sd"])[4:6] + "/" + str(c["sd"])[6:]
-    msg += f"{i}. {q}{f} {x['name']} {c['r']:.1f}배 ({c['chg']:+.1f}%) 폭발일 {sd}\n"
-msg += "\n🔕 뉴스·공시 없음 · 📰 뉴스 있음 · 🔥 다음날도 거래 이어짐\nhttps://stock-radar-kr.netlify.app\n※ 투자 추천 아님, 데이터 조회용"
+if L:
+    msg += "\n📊 참고) 거래량 급증 TOP5\n" + "\n".join(f"· {x['name']} {x['cur']['r']:.1f}배 ({x['cur']['chg']:+.1f}%)" for x in L[:5]) + "\n"
+msg += "\nhttps://stock-radar-kr.netlify.app\n※ 투자 추천 아님, 데이터 조회용"
 send(msg)
 
 # 블로그 글 (4000자 단위로 나눠서)

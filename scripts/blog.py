@@ -1,62 +1,53 @@
 # -*- coding: utf-8 -*-
-"""매일 블로그 글 자동 생성 → docs/data/blog.txt (텔레그램으로도 전송됨)"""
-import json, os, datetime as dt
+"""매일 블로그 글 자동 생성 → docs/data/blog.txt (텔레그램으로도 전송됨). 쉬운 말 버전."""
+import json, os
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 D = os.path.join(ROOT, "docs", "data")
-R = json.load(open(os.path.join(D, "result.json"), encoding="utf-8"))
-B = json.load(open(os.path.join(D, "backtest.json"), encoding="utf-8"))
-M = json.load(open(os.path.join(D, "meta.json"), encoding="utf-8"))
+R = json.load(open(os.path.join(D, "radar.json"), encoding="utf-8"))
 
-K, CAP, FLOOR, WIN, N = 3, 3, -5, "20", 7
-BN = {"all": "전체", "s": "300억↓", "m": "300~1000억", "l": "1000억↑"}
-
-def fd(x): x = str(x); return f"{x[4:6]}/{x[6:]}"
-def cap_s(c): return f"{c/10000:.1f}조" if c >= 10000 else f"{c:,}억"
+def fdl(x): x = str(x); return f"{x[:4]}-{x[4:6]}-{x[6:]}"
 def pct(v): return f"{v:+.1f}%"
+def cap_s(c): return f"{c/10000:.1f}조" if c >= 10000 else f"{c:,}억"
 
-L = [dict(x, cur=x["w"][WIN]) for x in R if x["w"].get(WIN)]
-L = [x for x in L if x["cur"]["r"] >= K and FLOOR <= x["cur"]["chg"] <= CAP]
-L.sort(key=lambda x: -x["cur"]["r"])
-quiet = [x for x in L if x["disc"] == 0 and x["news"] == 0]
-hot = [x for x in L if x["cur"]["r2"] >= 1.5]
-d = str(M["lastDate"]); d = f"{d[:4]}-{d[4:6]}-{d[6:]}"
+w, r, bt = R["weather"], R["rule"], R["backtest"]
+p = bt["portfolio"]; m = bt["market"]
+sigs = " / ".join(f"{r['signals'][k]['icon']} {r['signals'][k]['name']}" for k in r["byWeather"][w["key"]])
+wx_txt = {"cold": "주식 대부분이 내리는 중이에요. 이럴 땐 '한 달 바닥인데 사람 몰리는 주식'을 봐요.",
+          "mid": "오르는 것 반, 내리는 것 반이에요. '반년 만에 최고가 넘긴 주식'과 '조용히 거래 터진 주식'을 봐요.",
+          "hot": "주식 대부분이 오르는 중이에요. 욕심 금물, '반년 만에 최고가 넘긴 주식'만 조심해서 봐요."}[w["key"]]
 
-title = f"[{d}] 거래량은 터졌는데 주가는 조용한 종목 {min(N, len(L))}선 — 뉴스 없는 종목 {len(quiet)}개"
+d = fdl(R["date"])
+title = f"[{d}] 오늘 시장 날씨 {w['icon']}{w['name']} — 사볼까? 종목 {len(R['picks'])}개 (2년 검증 규칙)"
 s = title + "\n\n"
-s += f"📊 오늘의 요약\n"
-s += f"코스피·코스닥 {M['universe']:,}종목 중 \"최근 1개월 안에 평소보다 거래량이 {K}배 이상 터졌는데, 주가는 +{CAP}%도 안 오른(그리고 -5%보다 덜 빠진)\" 종목은 {len(L)}개였습니다. 그중 폭발일 전후로 뉴스도 공시도 없는 '이유 없는 거래량'은 {len(quiet)}개, 폭발 다음날까지 거래가 이어진 종목은 {len(hot)}개입니다.\n\n"
-s += "누군가 물량을 조용히 받아내고 있을 수도 있고, 반대로 큰손이 털고 나가는 중일 수도 있습니다. 참고용 데이터일 뿐 종목 추천이 아닙니다.\n\n"
-s += f"🔥 거래 폭발 TOP {min(N, len(L))}\n\n"
-for i, x in enumerate(L[:N], 1):
-    c = x["cur"]
-    s += f"{i}. {x['name']} ({x['mk']}, 시총 {cap_s(x['cap'])})\n"
-    s += f"· 폭발일 {fd(c['sd'])}: 평소 {c['av']:,}주 → {c['sv']:,}주 ({c['r']:.1f}배)\n"
-    s += f"· 1개월 주가 {pct(c['chg'])} / 현재가 {int(x['close']):,}원\n"
-    nd = "아직 모름" if c["r2"] < 0 else (f"평소의 {c['r2']:.1f}배로 이어짐 🔥" if c["r2"] >= 1.5 else f"평소의 {c['r2']:.1f}배로 조용해짐")
-    s += f"· 다음날 거래: {nd}\n"
-    if x["disc"] == 0 and x["news"] == 0:
-        s += "· 폭발일 전후 뉴스·공시 없음 (이유 없는 거래량)\n"
-    else:
-        t = (x.get("titles") or [""])[0]
-        s += f"· 뉴스 {x['news']}건·공시 {x['disc']}건" + (f" — {t}" if t else "") + "\n"
-    s += "\n"
-# 백테스트 한 줄
-g = B["grid"].get("3_3_-5_all_0", {}); mk = B["market"]["all"]
-if g.get("n"):
-    s += "📐 이 조건, 과거엔 통했나?\n"
-    s += f"지난 약 6개월 동안 같은 조건으로 골라서 20일 들고 있었다면 평균 {pct(g['favg20'])} (오른 비율 {g['fwin20']}%), 같은 기간 시장 전체 평균은 {pct(mk['avg20'])}였습니다. "
-    diff = g["favg20"] - mk["avg20"]
-    s += ("조건 자체는 시장보다 조금 좋았습니다." if diff > 1 else "조건 자체만으로는 시장을 이기지 못했습니다. '거래 폭발 + 안 오름'이 항상 매집은 아니라는 뜻입니다." if diff < -1 else "시장과 거의 차이가 없었습니다.") + "\n"
-    board = [x for x in B.get("board", []) if not x.get("sep")][:3]
-    if board:
-        s += "같은 기간 제일 잘 통한 조합: " + " / ".join(
-            f"{x['K']}배↑·{'이미 +3% 오름' if x['cap']=='up' else '+'+x['cap']+'%↓'}·{BN[x['b']]}{'·다음날🔥' if x['p']=='1' else ''} ({x['diff']:+.1f}%p)" for x in board) + "\n"
-    s += "\n"
-s += "📲 매일 저녁 6시 거래량 폭발 종목 알림 받기 → t.me/sogeum_radar_bot\n"
-s += "🔎 조건 직접 바꿔보기 (슬라이더) → stock-radar-kr.netlify.app\n\n"
-s += "※ 네이버 증권 공개 데이터를 조건대로 걸러낸 결과일 뿐 종목 추천이 아닙니다. 투자 판단과 책임은 본인에게 있습니다.\n"
-s += "#거래량 #거래량급증 #주식스크리너 #세력매집 #코스닥 #코스피 #주린이"
+s += f"🌤 오늘 시장 날씨: {w['icon']} {w['name']}\n"
+s += f"코스피·코스닥 {R['universe']:,}개 회사 중 {w['pct']}%가 요즘 평균(20일)보다 비싼 가격이에요. {wx_txt}\n\n"
+s += f"📏 오늘의 규칙\n{sigs} → 내일 장 마감 가격에 사기 → {r['hold']}일 들고 있기 → 15% 오르면 바로 팔기 → 한 번에 {r['slots']}개\n\n"
+if R["picks"]:
+    s += f"🛍 사볼까? (규칙에 맞는 {R['candidates']}개 중 거래 많은 순 {len(R['picks'])}개)\n\n"
+    for i, x in enumerate(R["picks"], 1):
+        s += f"{i}. {x['name']} ({x['mk']}, 시총 {cap_s(x['cap'])}) — {x['icon']} {x['sigName']}\n"
+        s += f"· 오늘 {x['close']:,}원 ({pct(x['d1'])}) / 한 달 {pct(x['chg20'])} / 오늘 거래 평소의 {x['vr']}배\n"
+        s += f"· 15% 목표가 {x['target']:,}원 / 늦어도 12거래일 뒤 팔기\n"
+        if x.get("news") or x.get("disc"):
+            t = (x.get("titles") or [""])[0]
+            s += f"· 뉴스 {x['news']}건·공시 {x['disc']}건" + (f" — {t}" if t else "") + "\n"
+        else:
+            s += "· 최근 뉴스·공시 없음\n"
+        s += "\n"
+    if R["bench"]:
+        s += "예비 후보: " + ", ".join(x["name"] for x in R["bench"][:5]) + "\n\n"
+else:
+    s += "🛍 오늘은 규칙에 맞는 종목이 없어요. 이런 날은 쉬는 게 규칙이에요.\n\n"
+s += "📐 이 규칙, 과거엔 어땠나? (2년치 과거 시험)\n"
+s += f"{fdl(bt['period']['from'])}~{fdl(bt['period']['to'])}에 1,000만 원으로 이 규칙대로 3종목씩 사고팔았다면 {pct(p['ret'])} ({p['final']:,}원). 같은 기간 아무 주식이나 다 들고 있었으면 {pct(m['ret'])}. "
+s += f"{p['trades']}번 사고팔아 {p['win']}% 이겼고, 제일 많이 까졌을 땐 {p['mdd']}%였어요. 종목 고르는 운에 따라 {pct((bt['randomFinal']['min']/1e7-1)*100)}~{pct((bt['randomFinal']['max']/1e7-1)*100)}까지 달라졌어요.\n"
+s += "좋은 달 몇 개가 대부분을 벌고 나쁜 달이 연달아 오기도 하니, 처음엔 꼭 연습 장부로 1~2달 해보세요.\n\n"
+s += "왜 이 규칙이냐면: 2,300개 회사 2년치를 11가지 방법으로 시험해봤는데, '거래량 터진 주식'은 그 자체론 아무 효과가 없었고, 짧게(1~5일) 사고파는 건 전부 손해였고, 떨어지면 파는 손절도 전부 손해였어요. 남은 게 이 규칙이에요.\n\n"
+s += "📲 매일 저녁 6시 알림 → t.me/sogeum_radar_bot\n"
+s += "🔎 오늘 날씨·종목·연습 장부 → stock-radar-kr.netlify.app\n\n"
+s += "※ 네이버 증권 공개 데이터를 규칙대로 걸러낸 결과일 뿐 종목 추천이 아닙니다. 과거 결과가 미래를 보장하지 않습니다. 투자 판단과 책임은 본인에게 있습니다.\n"
+s += "#주식 #코스닥 #코스피 #신고가 #거래량 #백테스트 #주린이 #주식공부"
 
 open(os.path.join(D, "blog.txt"), "w", encoding="utf-8").write(s)
 print("blog.txt", len(s), "chars")
